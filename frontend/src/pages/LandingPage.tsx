@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Sparkles, Wand2, Copy, History, Star, Zap, ArrowRight, Check } from 'lucide-react'
+import { Sparkles, Wand2, Copy, History, Star, Zap, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 const FEATURES = [

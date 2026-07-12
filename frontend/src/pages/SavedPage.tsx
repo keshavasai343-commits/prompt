@@ -1,14 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Search, Filter, Download, Star, BookMarked } from 'lucide-react'
+import { Search, Download, Star, BookMarked } from 'lucide-react'
 import { Header } from '@/components/layout/Header'
 import { PromptCard } from '@/components/prompts/PromptCard'
-import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { usePrompts } from '@/hooks/usePrompts'
-import type { PromptCategory, TargetAI, Prompt } from '@/types'
+import type { PromptCategory, Prompt } from '@/types'
 import { CATEGORY_LABELS } from '@/types'
 import { promptService } from '@/services/promptService'
 import toast from 'react-hot-toast'
@@ -21,7 +19,7 @@ export function SavedPage() {
   const [category, setCategory] = useState<PromptCategory | undefined>()
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<number[]>([])
+  const [selected, _setSelected] = useState<number[]>([])
 
   const { data, isLoading } = usePrompts({
     page,
