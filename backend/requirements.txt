@@ -12,7 +12,7 @@ python-multipart==0.0.12
 httpx==0.28.1
 openai==1.57.4
 anthropic==0.40.0
-google-generativeai==0.8.3
+google-genai>=0.8.0
 python-dotenv==1.0.1
 loguru==0.7.3
 pytest==8.3.4

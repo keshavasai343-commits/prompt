@@ -14,7 +14,8 @@ env/
 .venv/
 *.pyc
 logs/
-test.db
+*.db
+*.log
 .pytest_cache/
 
 # Node / Frontend
