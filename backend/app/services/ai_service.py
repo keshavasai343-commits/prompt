@@ -107,11 +107,19 @@ def build_gemini_request(input_text: str, category: PromptCategory, target_ai: T
     )
 
 
-def _strip_json_fences(text: str) -> str:
+def _extract_json(text: str) -> str:
+    """Extract a JSON object from text, handling markdown fences and surrounding prose."""
     text = text.strip()
+    # Strip markdown code fences
     text = re.sub(r"^```(?:json)?\s*\n?", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n?```\s*$", "", text, flags=re.MULTILINE)
-    return text.strip()
+    text = text.strip()
+    # Already clean JSON
+    if text.startswith("{"):
+        return text
+    # Gemini sometimes adds prose before/after — find the first {...} block
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    return match.group(0) if match else text
 
 
 class AIService:
@@ -211,7 +219,7 @@ class AIService:
         tokens = usage.total_token_count if usage else None
 
         try:
-            data = json.loads(_strip_json_fences(raw))
+            data = json.loads(_extract_json(raw))
             expert = data.get("expert_prompt", raw)
             return {
                 "enhanced_prompt": expert,
