@@ -12,6 +12,7 @@ import {
   TARGET_AI_LABELS,
   AI_MODELS,
 } from '@/types'
+import { useGenerateDraft } from '@/store/generateDraft'
 
 interface PromptInputProps {
   onGenerate: (params: {
@@ -27,10 +28,8 @@ const CATEGORIES = Object.entries(CATEGORY_LABELS) as [PromptCategory, string][]
 const TARGET_AIS = Object.entries(TARGET_AI_LABELS) as [TargetAI, string][]
 
 export function PromptInput({ onGenerate, isLoading }: PromptInputProps) {
-  const [inputText, setInputText] = useState('')
-  const [category, setCategory] = useState<PromptCategory>('coding')
-  const [targetAI, setTargetAI] = useState<TargetAI>('chatgpt')
-  const [selectedModel, setSelectedModel] = useState<AIModel>(AI_MODELS[0])
+  const { inputText, category, targetAI, modelId, setInputText, setCategory, setTargetAI, setModelId } = useGenerateDraft()
+  const selectedModel: AIModel = AI_MODELS.find(m => m.id === modelId) ?? AI_MODELS[0]
   const [showModelMenu, setShowModelMenu] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -126,7 +125,7 @@ export function PromptInput({ onGenerate, isLoading }: PromptInputProps) {
                     <button
                       key={model.id}
                       type="button"
-                      onClick={() => { setSelectedModel(model); setShowModelMenu(false) }}
+                      onClick={() => { setModelId(model.id); setShowModelMenu(false) }}
                       className={`flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-accent transition-colors ${
                         selectedModel.id === model.id ? 'bg-accent' : ''
                       }`}

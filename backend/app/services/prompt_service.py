@@ -1,7 +1,7 @@
 import csv
 import io
 import json
-from typing import List, Optional
+from typing import AsyncGenerator, List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from app.models.prompt import Prompt, PromptCategory, TargetAI
@@ -10,14 +10,49 @@ from app.models.user import User
 from app.repositories.prompt_repository import PromptRepository
 from app.repositories.history_repository import HistoryRepository
 from app.schemas.prompt import (
+    PromptAnalysis,
     PromptCreate,
     PromptGenerateRequest,
     PromptGenerateResponse,
     PromptListResponse,
     PromptResponse,
     PromptUpdate,
+    PromptVariants,
 )
 from app.services.ai_service import ai_service
+
+
+def _build_response(result: dict, request: PromptGenerateRequest) -> PromptGenerateResponse:
+    """Map raw AI service dict → PromptGenerateResponse schema."""
+    variants = None
+    if result.get("standard_prompt") and result.get("advanced_prompt") and result.get("expert_prompt"):
+        variants = PromptVariants(
+            standard=result["standard_prompt"],
+            advanced=result["advanced_prompt"],
+            expert=result["expert_prompt"],
+        )
+
+    analysis = None
+    if result.get("quality_score") is not None and result.get("detected_intent"):
+        analysis = PromptAnalysis(
+            detected_intent=result.get("detected_intent", ""),
+            assigned_role=result.get("assigned_role", ""),
+            quality_score=int(result.get("quality_score", 0)),
+            suggested_improvements=result.get("suggested_improvements", []),
+            missing_information=result.get("missing_information", []),
+            follow_up_questions=result.get("follow_up_questions", []),
+        )
+
+    return PromptGenerateResponse(
+        enhanced_prompt=result["enhanced_prompt"],
+        category=request.category,
+        target_ai=request.target_ai,
+        ai_model_used=result.get("model_used", request.ai_model),
+        tokens_used=result.get("tokens_used"),
+        generation_time_ms=result.get("generation_time_ms"),
+        variants=variants,
+        analysis=analysis,
+    )
 
 
 class PromptService:
@@ -25,9 +60,7 @@ class PromptService:
         self.prompt_repo = PromptRepository(db)
         self.history_repo = HistoryRepository(db)
 
-    async def generate(
-        self, request: PromptGenerateRequest, user: User
-    ) -> PromptGenerateResponse:
+    async def generate(self, request: PromptGenerateRequest, user: User) -> PromptGenerateResponse:
         result = await ai_service.enhance_prompt(
             input_text=request.input_text,
             category=request.category,
@@ -36,7 +69,7 @@ class PromptService:
         )
 
         if request.save_to_history:
-            history = PromptHistory(
+            self.history_repo.create(PromptHistory(
                 user_id=user.id,
                 original_input=request.input_text,
                 enhanced_prompt=result["enhanced_prompt"],
@@ -45,17 +78,45 @@ class PromptService:
                 ai_model_used=result.get("model_used"),
                 tokens_used=result.get("tokens_used"),
                 generation_time_ms=result.get("generation_time_ms"),
-            )
-            self.history_repo.create(history)
+            ))
 
-        return PromptGenerateResponse(
-            enhanced_prompt=result["enhanced_prompt"],
+        return _build_response(result, request)
+
+    async def generate_stream(
+        self, request: PromptGenerateRequest, user: User
+    ) -> AsyncGenerator[dict, None]:
+        """Async generator that proxies AI stream events, saving history on completion."""
+        async for event in ai_service.enhance_prompt_stream(
+            input_text=request.input_text,
             category=request.category,
             target_ai=request.target_ai,
-            ai_model_used=result.get("model_used", request.ai_model),
-            tokens_used=result.get("tokens_used"),
-            generation_time_ms=result.get("generation_time_ms"),
-        )
+            model=request.ai_model,
+        ):
+            if event["type"] == "complete":
+                data = event["data"]
+
+                if request.save_to_history:
+                    self.history_repo.create(PromptHistory(
+                        user_id=user.id,
+                        original_input=request.input_text,
+                        enhanced_prompt=data["enhanced_prompt"],
+                        category=request.category,
+                        target_ai=request.target_ai,
+                        ai_model_used=data.get("model_used"),
+                        tokens_used=data.get("tokens_used"),
+                        generation_time_ms=data.get("generation_time_ms"),
+                    ))
+
+                # Enrich the complete event with request context
+                data["category"] = request.category.value
+                data["target_ai"] = request.target_ai.value
+                data["ai_model_used"] = data.get("model_used", request.ai_model)
+
+            yield event
+
+    # ------------------------------------------------------------------ #
+    #  CRUD helpers                                                        #
+    # ------------------------------------------------------------------ #
 
     def save_prompt(self, data: PromptCreate, user: User) -> PromptResponse:
         prompt = Prompt(
@@ -116,10 +177,8 @@ class PromptService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prompt not found")
         if prompt.user_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
-
         for field, value in data.model_dump(exclude_none=True).items():
             setattr(prompt, field, value)
-
         prompt = self.prompt_repo.update(prompt)
         return PromptResponse.model_validate(prompt)
 
@@ -144,7 +203,8 @@ class PromptService:
         prompts = [
             self.prompt_repo.get_by_id(pid)
             for pid in prompt_ids
-            if self.prompt_repo.get_by_id(pid) and self.prompt_repo.get_by_id(pid).user_id == user.id
+            if self.prompt_repo.get_by_id(pid)
+            and self.prompt_repo.get_by_id(pid).user_id == user.id
         ]
 
         if format == "json":
@@ -176,13 +236,12 @@ class PromptService:
         if format == "md":
             lines = []
             for p in prompts:
-                lines.append(f"# {p.title}\n")
+                lines.append(f"# {p.title}\n\n")
                 lines.append(f"**Category:** {p.category.value}  \n")
                 lines.append(f"**Target AI:** {p.target_ai.value}  \n\n")
                 lines.append(f"**Original Input:**\n{p.original_input}\n\n")
                 lines.append(f"**Enhanced Prompt:**\n{p.enhanced_prompt}\n\n---\n\n")
             return "".join(lines), "text/markdown"
 
-        # txt
-        lines = [f"{p.title}\n{p.enhanced_prompt}\n\n{'='*60}\n\n" for p in prompts]
+        lines = [f"{p.title}\n{p.enhanced_prompt}\n\n{'=' * 60}\n\n" for p in prompts]
         return "".join(lines), "text/plain"

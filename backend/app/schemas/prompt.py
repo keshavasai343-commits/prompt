@@ -8,7 +8,7 @@ class PromptGenerateRequest(BaseModel):
     input_text: str
     category: PromptCategory = PromptCategory.GENERAL
     target_ai: TargetAI = TargetAI.CHATGPT
-    ai_model: str = "gpt-4o"
+    ai_model: str = "gemini-2.5-flash"
     save_to_history: bool = True
 
     @field_validator("input_text")
@@ -22,13 +22,30 @@ class PromptGenerateRequest(BaseModel):
         return v
 
 
+class PromptVariants(BaseModel):
+    standard: str
+    advanced: str
+    expert: str
+
+
+class PromptAnalysis(BaseModel):
+    detected_intent: str
+    assigned_role: str
+    quality_score: int  # 0–100
+    suggested_improvements: List[str]
+    missing_information: List[str]
+    follow_up_questions: List[str]
+
+
 class PromptGenerateResponse(BaseModel):
-    enhanced_prompt: str
+    enhanced_prompt: str  # always = expert variant for backward compat
     category: PromptCategory
     target_ai: TargetAI
     ai_model_used: str
     tokens_used: Optional[int] = None
     generation_time_ms: Optional[int] = None
+    variants: Optional[PromptVariants] = None
+    analysis: Optional[PromptAnalysis] = None
 
 
 class PromptBase(BaseModel):

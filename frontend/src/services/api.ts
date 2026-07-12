@@ -5,7 +5,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api/v1'
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30000,
+  timeout: 90000,
 })
 
 apiClient.interceptors.request.use((config) => {
